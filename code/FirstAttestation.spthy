@@ -1,0 +1,53 @@
+theory FirstEATImplementation
+begin
+builtins: asymmetric-encryption, revealing-signing
+
+rule create_identities:
+    [Fr(~ltk)] //generate new fresh private key
+    -->
+    [!Identity($A, ~ltk, pk(~ltk)), Out(pk(~ltk))] //Generate a fact where the agent:A is assosiated with the priv/pub-key and output the public-key to the web
+
+
+rule Verifier_sends_Nonce_to_Attester: // note $ on attester, might need to remove it
+    [!Identity($Attester, ~Altk, pk(~Altk)), Fr(~n) ]
+    -->
+    [Out(<$Verfier, $Attester, ~n>), !Nonce(~n)]
+
+
+rule Atterster_create_and_sends_EAT:
+    let
+        EAT = <n, $attester_data>
+        signed_EAT = revealSign(EAT, ~Altk)
+    in
+    [!Identity($Attester, ~Altk, pk(~Altk)), In(<$Verifier, $Atterster, n>)]
+    --[AttesterSendsEat($Attester, $Verifier, signed_EAT )]->
+    [Out(<$Attester, $Verifier, signed_EAT>)]
+
+rule Verifier_recieve_and_verify_EAT:
+    let 
+        EAT = getMessage(signed_EAT)
+        check_signature = revealVerify(signed_EAT, EAT, pk(~Altk))
+    in    
+    [!Nonce(n), !Identity(Attester, ~Altk, pk(~Altk)),  In(<Attester, $Verfier, signed_EAT>)]
+    --[VerifierVerifiesEat(Attester, $Verifier, signed_EAT), Eq(check_signature, true), Eq(n, fst(EAT))]->
+    []
+
+    
+
+// Lemmas
+//lemma 1 : verifier could never succesfully verify an attester result, that was not provided by the attester 
+//lemma 3 : Include state in the Attester -> Then have a lemma say that the verifier can't successfully verify an attester that is in a bad state.
+restriction Equality:
+"All x y #i . Eq(x,y) @i ==> x=y "
+
+lemma lem1:
+ "
+ All Attester Verifier signed_EAT #i . 
+    (
+        VerifierVerifiesEat(Attester, Verifier, signed_EAT) @i
+
+    )
+    ==> (Ex #j . AttesterSendsEat(Attester, Verifier, signed_EAT) @j & #j < #i)    
+ "
+
+end
