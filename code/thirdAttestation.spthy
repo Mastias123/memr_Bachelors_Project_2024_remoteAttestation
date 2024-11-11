@@ -1,0 +1,77 @@
+theory ThirdEATImplementation
+begin
+builtins: asymmetric-encryption, revealing-signing
+
+//This lemma also includes a private key compromise lemma, and a "bad state" of the eat check
+
+rule create_identities:
+    [Fr(~ltk)] //generate new fresh private key
+    --[Create_ident($A, ~ltk)]->
+    [!Identity($A, ~ltk, pk(~ltk)), Out(pk(~ltk))] 
+    
+
+
+rule Verifier_sends_Nonce_to_Attester: 
+    let 
+        signed_nonce = revealSign(~n, ~Vltk)
+    in
+    [!Identity($Attester, ~Altk, pk(~Altk)), Fr(~n), !Identity($Verifier, ~Vltk, pk(~Vltk)) ]
+    -->
+    [Out(<$Verfier, $Attester, signed_nonce>), !Nonce(~n), Verifier0($Verifier, $Attester, pk(~Altk), ~n, ~Vltk)]
+
+
+rule Atterster_create_and_sends_EAT:
+    let
+        attester_data = 'bad_state'
+        EAT = <signed_nonce, attester_data>
+        signed_EAT = revealSign(EAT, ~Altk)
+    in
+    [!Identity($Attester, ~Altk, pk(~Altk)), In(<$Verifier, $Atterster, signed_nonce>)]
+    --[AttesterSendsEat($Attester, $Verifier, signed_EAT )]->
+    [Out(<$Attester, $Verifier, signed_EAT>)]
+
+
+
+rule Verifier_recieve_and_verify_EAT:
+    let 
+        EAT = getMessage(signed_EAT) //get message without key, only something a "simulator actor" can do
+        check_signature = revealVerify(signed_EAT, EAT, pk(~Altk))
+        unpacked_nonce = revealVerify(fst(EAT), ~n, pk(~Vltk))
+        unpacked_state = revealVerify(snd(EAT), 'good_state', pk(~Altk))
+    in    
+    [Verifier0($Verifier, $Attester, pk(~Altk), ~n, ~Vltk), !Nonce(~n), !Identity($Attester, ~Altk, pk(~Altk)),  In(<$Attester, $Verfier, signed_EAT>)]
+    --[VerifierVerifiesEat($Attester, $Verifier, signed_EAT), Eq(check_signature, true), Eq(unpacked_nonce,true), Eq(unpacked_state,true)]->
+    []
+
+restriction Equality:
+   "All x y #i . Eq(x,y) @i ==> x=y "    
+
+
+// Lemmas
+
+//The verifier can't successfully verify an attester that is in a "bad state".
+//The verifier can't successfully verify an eat not send by the attester
+//The verifier can't successfully verify an eat with a wrong nonce
+lemma cannot_succesfully_verify_EAT_not_send_by_Attester:
+// exists-trace
+ "
+ All Attester Verifier signed_EAT #i . 
+    (
+        VerifierVerifiesEat(Attester, Verifier, signed_EAT) @i
+    )
+    ==> (Ex #j . AttesterSendsEat(Attester, Verifier, signed_EAT) @j & #j < #i)    
+ "
+
+//K never learns the attesters long term key
+lemma attester_private_key_compromised:
+ "
+ All Attester Verifier signed_EAT ltk #i #k .
+    ( 
+        Create_ident(Attester, ltk) @k &
+        VerifierVerifiesEat(Attester, Verifier, signed_EAT) @i 
+    )
+    ==> not(Ex #j . K(ltk) @j & j<i & k<i)
+ "
+
+
+end
