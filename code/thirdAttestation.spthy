@@ -18,7 +18,7 @@ rule Verifier_sends_Nonce_to_Attester:
     in
     [!Identity($Attester, ~Altk, pk(~Altk)), Fr(~n), !Identity($Verifier, ~Vltk, pk(~Vltk)) ]
     --[VerifierSendsNonce($Attester, $Verifier, signed_nonce)]->
-    [Out(<$Verfier, $Attester, signed_nonce>), !Nonce(~n), Verifier0($Verifier, $Attester, pk(~Altk), ~n, ~Vltk)] //, Attester0($Attester, ~Altk, pk(~Altk))
+    [Out(<$Verifier, $Attester, signed_nonce>), Verifier0($Verifier, $Attester, pk(~Altk), ~n, ~Vltk)] // Nonce(~n) , Attester0($Attester, ~Altk, pk(~Altk))
 
 
 // rule attester goes rouge
@@ -84,12 +84,13 @@ rule Verifier_recieve_and_verify_EAT:
         unpacked_state = snd(EAT)
         // unpacked:state = revealVerify(snd(EAT, 'good_state', ))
     in    
-    [Verifier0($Verifier, $Attester, pk(~Altk), ~n, ~Vltk), !Nonce(~n), !Identity($Attester, ~Altk, pk(~Altk)),  In(<$Attester, $Verfier, signed_EAT>)]
-    --[VerifierVerifiesEat($Attester, $Verifier, signed_EAT),
+    // [Verifier0($Verifier, $Attester, pk(~Altk), ~n, ~Vltk), Nonce(~n), !Identity($Attester, ~Altk, pk(~Altk)),  In(<$Attester, $Verfier, signed_EAT>)]
+    [Verifier0($Verifier, $Attester, pk(~Altk), ~n, ~Vltk), !Identity($Attester, ~Altk, pk(~Altk)),  In(<$Attester, $Verfier, signed_EAT>)]
+    --[VerifierVerifiesEat($Attester, $Verifier, signed_EAT, ~n),
         Eq(check_signature, true),
         // Eq(unpacked_nonce, true),
         Eq(unpacked_nonce, ~n),
-        Eq(unpacked_state,'good_state'),
+        Eq(unpacked_state,'good_state')
       ]->
     []
 
@@ -111,16 +112,16 @@ restriction OnlyOneIdentity:
 // if the Attester never turn rouge (i.e. AttesterCompromise never happens), the protocol still runs to the end (i.e. we reach the event VerifierVerifiesEat
 lemma sanity_check:
 "
-All Attester Verifier signed_EAT #k .
+All Attester Verifier signed_EAT n #k .
     (
-        VerifierVerifiesEat(Attester, Verifier, signed_EAT) @k
-    )
+        VerifierVerifiesEat(Attester, Verifier, signed_EAT, n) @k
+    ) 
     ==> 
     (
         Ex signed_nonce1 signed_nonce2 #t #i .
             VerifierSendsNonce(Attester, Verifier, signed_nonce1) @t &
             AttesterSendsEatGood(Attester, Verifier, signed_EAT, signed_nonce2) @i &
-            Eq(signed_nonce1, signed_nonce2) @i &
+            Eq(signed_nonce1, signed_nonce2) @k &
             not (Ex #j. AttesterCompromise(Attester) @j & #j < #i) &
             #t < #i & 
             #i < #k
@@ -130,14 +131,18 @@ All Attester Verifier signed_EAT #k .
 
 
 
+
+
+
+
 //The verifier can't successfully verify an attester that is in a "bad state".
 //The verifier can't successfully verify an eat not send by the attester
 //The verifier can't successfully verify an eat with a wrong nonce
 lemma cannot_succesfully_verify_EAT_not_send_by_Attester:
  "
- All Attester Verifier signed_EAT #i . 
+ All Attester Verifier signed_EAT n #i . 
     (
-        VerifierVerifiesEat(Attester, Verifier, signed_EAT) @i
+        VerifierVerifiesEat(Attester, Verifier, signed_EAT, n) @i
     )
     ==> (Ex signed_nonce #j . 
             AttesterSendsEatGood(Attester, Verifier, signed_EAT, signed_nonce) @j &
@@ -145,22 +150,22 @@ lemma cannot_succesfully_verify_EAT_not_send_by_Attester:
             // "or the attester was compromised before @i, and we didn't regain control of the attester while the verifier sent the nonce" 
  "
 
-// add a lemma that shows that agreement doesn't hold from the attester's point of view
-// lemma cannot_succesfully_verify_EAT_not_send_by_Attester:
-// "
-// All Attester Verifier signed_EAT signed_nonce #i #t .
-//     (
-//         VerifierVerifiesEat(Attester, Verifier, signed_EAT) @i &
-//         AttesterSendsEatGood(Attester, Verifier, signed_EAT, signed_nonce) @t &
-//         #t < #i
-//     )
-//     ==> 
-//     not (
-//         Ex #j .
-//             VerifierSendsNonce(Attester, Verifier, signed_nonce) @j &
-//             #j < #t
-//     )
-// "
+
+lemma verify_nonce_not_send_by_Verifier:
+"
+All Attester Verifier signed_EAT signed_nonce n #i #t .
+    (
+        VerifierVerifiesEat(Attester, Verifier, signed_EAT, n) @i &
+        AttesterSendsEatGood(Attester, Verifier, signed_EAT, signed_nonce) @t &
+        #t < #i
+    )
+    ==> 
+    not (
+        Ex #j .
+            VerifierSendsNonce(Attester, Verifier, signed_nonce) @j &
+            #j < #t
+    )
+"
 
 // add a lemma that shows that agreement doesn't hold from the attester's point of view
 lemma attester_does_not_agree_on_nonce_origin:
@@ -182,10 +187,10 @@ All Attester Verifier signed_EAT signed_nonce #t .
 //K never learns the attesters long term key
 lemma attester_private_key_compromised:
  "
- All Attester Verifier signed_EAT ltk #i #k .
+ All Attester Verifier signed_EAT ltk n #i #k .
     ( 
         Create_ident(Attester, ltk) @k &
-        VerifierVerifiesEat(Attester, Verifier, signed_EAT) @i 
+        VerifierVerifiesEat(Attester, Verifier, signed_EAT, n) @i 
     )
     ==> not(Ex #j .
                 K(ltk) @j & j<i &
