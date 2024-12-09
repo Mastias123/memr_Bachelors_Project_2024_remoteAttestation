@@ -22,7 +22,7 @@ rule Verifier_sends_Nonce_to_Attester:
 
 
 // rule attester gets compromised
-rule attester_Gets_compromised:
+rule Attester_Gets_compromised:
     [AttesterState($Attester, 'good')]
     --[AttesterCompromise($Attester)]->
     [AttesterState($Attester, 'bad')]
