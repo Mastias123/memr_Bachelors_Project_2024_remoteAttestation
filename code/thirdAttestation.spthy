@@ -35,9 +35,9 @@ rule attester_Gets_compromised:
 //=========================================================================================================================================
 
 
-rule Atterster_create_and_sends_EAT_good:
+rule Attester_create_and_sends_EAT_good:
     let
-        attester_data = 'good_state' // Check that you're ein a good state and send good firmware
+        attester_data = 'good_state' // Check that you're in a good state and send good firmware
         EAT = <signed_nonce, attester_data>
         signed_EAT = revealSign(EAT, ~Altk)
     in
@@ -50,7 +50,7 @@ rule Atterster_create_and_sends_EAT_good:
     [Out(<$Attester, $Verifier, signed_EAT>)]
 
 // rule for offering a signing interface to the attacker when the attester is compromised 
-rule Atterster_create_and_sends_EAT_bad:
+rule Attester_create_and_sends_EAT_bad:
     let
         attester_data = 'bad_state' // check that you're in a bad state and send bad_firmware
         EAT = <signed_nonce, attester_data>
@@ -68,7 +68,7 @@ rule Atterster_create_and_sends_EAT_bad:
 //=========================================================================================================================================
 
 
-rule Verifier_recieve_and_verify_EAT:
+rule Verifier_receive_and_verify_EAT:
     let 
         EAT = getMessage(signed_EAT) // Get message without key, only something a "simulator actor" can do
         check_signature = revealVerify(signed_EAT, EAT, pk(~Altk))
@@ -105,9 +105,6 @@ restriction OnlyOneIdentity:
 //==========================================================================================================================================================
 // Lemmas
 //==========================================================================================================================================================
-
-
-
 
 //The verifier can't successfully verify an attester that is in a "bad state".
 //The verifier can't successfully verify an eat not send by the attester
