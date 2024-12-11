@@ -165,22 +165,23 @@ All Attester Verifier signed_EAT n #k .
 // if the Attester never turn rouge (i.e. AttesterCompromise never happens), the protocol still runs to the end (i.e. we reach the event Verification_success
 lemma cannot_Verify_A_Bad_EAT_or_Compromised_Attester:
 "
-All Attester Verifier signed_EAT n #k.
+All Attester Verifier signed_EAT n #k .
     (
         Verification_success(Attester, Verifier, signed_EAT, n) @k
     ) 
     ==> 
     (
-        ((Ex Verifier1 vltk #t #i.
-        VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @t &
-        AttesterSendsEatGood(Attester, Verifier1, signed_EAT, n) @i &
+        ((Ex vltk Verifier1 #t #i .
+            VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @t &
+            AttesterSendsEatGood(Attester, Verifier1, signed_EAT, n) @i &
             #t < #k & 
-            #i < #k) & (not (Ex #j. AttesterGetsBadState(Attester) @j & #j < #k))
+            #t < #i &
+            #i < #k & 
+            (not (Ex #j. AttesterGetsBadState(Attester) @j & #j < #i)))
         ) |
         (Ex #j. AttesterGetsPartiallyCompromise(Attester) @j & #j < #k) 
-            
     )
-"
+" 
 
 
 //The Attester doesn't check the origin of the nonce
