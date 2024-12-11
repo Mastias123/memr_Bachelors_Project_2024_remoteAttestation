@@ -106,9 +106,7 @@ restriction OnlyOneIdentity:
 // Lemmas
 //==========================================================================================================================================================
 
-//The verifier can't successfully verify an attester that is in a "bad state".
-//The verifier can't successfully verify an eat not send by the attester
-//The verifier can't successfully verify an eat with a wrong nonce
+
 
 // sanity check: the protocol gets to the end with only non-compormised parties
 // if the Attester never turn rouge (i.e. AttesterCompromise never happens), the protocol still runs to the end (i.e. we reach the event VerifierVerifiesEat
@@ -130,8 +128,26 @@ All Attester Verifier signed_EAT n #k .
     )
 "
 
+//The verifier can't successfully verify an attester that is in a "bad state".
+//The verifier can't successfully verify an eat with a wrong nonce
+lemma cannot_Verify_A_Bad_EAT_or_Compromised_Attester:
+"
+All Attester Verifier signed_EAT n #k .
+    (
+        Verification_success(Attester, Verifier, signed_EAT, n) @k
+    ) 
+    ==> 
+    (
+        (Ex Verifier1 vltk #t #i .
+            VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @t &
+            AttesterSendsEatGood(Attester, Verifier1, signed_EAT, n) @i &
+            #t < #k & 
+            #i < #k)     
+    )
+"
 
-//The Attester dosn't check the origin of the nonce
+
+//The Attester doesn't check the origin of the nonce
 lemma verify_nonce_not_send_by_Verifier:
 "
 All Attester Verifier signed_EAT signed_nonce n #i #t .
