@@ -2,14 +2,25 @@ theory ThirdEATImplementation
 begin
 builtins: revealing-signing 
 
-// in this model the verifier and the relying party are the same entity
+// In this model the verifier and the relying party are the same entity
 // this is a reasonable simplification since the verifier and relying party trust each other
 // and in some instances they are the same identity
+
+//The attester state represents the actual state that the attester is in.
+//In the model the Attester state can be in three different states:
+// * good
+// * bad - either compromised and the TPM notices or just has bad values like old software update
+// * partialCompromise - an adversary is able to trick the TPM to sign of bad attester data as if it was good attester data.
+
+
+// Attester_data is the state that the TPM reports, meaning if an attester and its TPM 
+// is compromised then the attester is in a compromised state, but the TPM can report that
+// it is in a good state. The state is either 'good' or 'bad'
 
 rule create_identities:
     [Fr(~ltk)]
     --[Create_ident($A, ~ltk)]->
-    [!Identity($A, ~ltk, pk(~ltk)), Out(pk(~ltk)), AttesterState($A, 'good')]  
+    [!Identity($A, ~ltk, pk(~ltk)), Out(pk(~ltk)), AttesterState($A, 'good_state')]  
 
 
 rule Verifier_sends_Nonce_to_Attester: 
@@ -21,11 +32,17 @@ rule Verifier_sends_Nonce_to_Attester:
     [Out(<$Verifier, $Attester, signed_nonce>), Nonce(~n), Verifier0($Verifier, $Attester, pk(~Altk), ~n, ~Vltk)]
 
 
-// rule attester gets compromised
-rule Attester_Gets_compromised:
-    [AttesterState($Attester, 'good')]
-    --[AttesterCompromise($Attester)]->
-    [AttesterState($Attester, 'bad')]
+// rule attester gets compromised or has bad EAT data
+rule Attester_Gets_In_Bad_State:
+    [AttesterState($Attester, 'good_state')]
+    --[AttesterGetsBadState($Attester)]->
+    [AttesterState($Attester, 'bad_state')]
+
+// Rule for an attester to get partially compromised -> meaning that an adversary compromises the attester and is able to make the TPM sign of information as if it was in a good state.
+rule Attester_Gets_Partially_Comrpomised:
+    [AttesterState($Attester, 'good_state')]
+    --[AttesterGetsPartiallyCompromise($Attester)]->
+    [AttesterState($Attester, 'partially_Compromised')]
 
 
 // AttesterState($Attester, 'good') -[CompleteCompromise($Attester)]-> Out(~Altk)
@@ -37,14 +54,14 @@ rule Attester_Gets_compromised:
 
 rule Attester_create_and_sends_EAT_good:
     let
-        attester_data = 'good_state' // Check that you're in a good state and send good firmware
+        attester_data = 'good' // Check that you're in a good state and send good firmware
         EAT = <signed_nonce, attester_data>
         signed_EAT = revealSign(EAT, ~Altk)
     in
     [
         !Identity($Attester, ~Altk, pk(~Altk)), 
         In(<$Verifier, $Attester, signed_nonce>), 
-        AttesterState($Attester, 'good')
+        AttesterState($Attester, 'good_state')
     ]
     --[AttesterSendsEatGood($Attester, $Verifier, signed_EAT, signed_nonce)]->
     [Out(<$Attester, $Verifier, signed_EAT>)]
@@ -52,7 +69,7 @@ rule Attester_create_and_sends_EAT_good:
 // rule for offering a signing interface to the attacker when the attester is compromised 
 rule Attester_create_and_sends_EAT_bad:
     let
-        attester_data = 'bad_state' // check that you're in a bad state and send bad_firmware
+        attester_data = 'bad' // check that you're in a bad state and send bad_firmware
         EAT = <signed_nonce, attester_data>
         signed_EAT = revealSign(EAT, ~Altk)
         // there's no explicit test for the authenticity and integrity of signed_nonce
@@ -60,12 +77,27 @@ rule Attester_create_and_sends_EAT_bad:
     [ 
         !Identity($Attester, ~Altk, pk(~Altk)),
         In(<$Verifier, $Atterster, signed_nonce>),
-        AttesterState($Attester, 'bad')
+        AttesterState($Attester, 'bad_state')
     ]
     --[AttesterSendsEatBad($Attester, $Verifier, signed_EAT, signed_nonce )]->
     [Out(<$Attester, $Verifier, signed_EAT>)] 
 
+rule Attester_create_and_sends_EAT_partial_Compromised:
+    let
+        attester_data = 'good'
+        EAT = <signed_nonce, attester_data>
+        signed_EAT = revealSign(EAT, ~Altk)
+    in
+    [
+        !Identity($Attester, ~Altk, pk(~Altk)), 
+        In(<$Verifier, $Attester, signed_nonce>), 
+        AttesterState($Attester, 'partially_Compromised')
+    ]
+    --[AttesterSendsEatPartialCompromise($Attester, $Verifier, signed_EAT, signed_nonce)]->
+    [Out(<$Attester, $Verifier, signed_EAT>)]
+
 //=========================================================================================================================================
+
 
 
 rule Verifier_receive_and_verify_EAT:
@@ -80,7 +112,7 @@ rule Verifier_receive_and_verify_EAT:
     --[VerifierVerifiesEat($Attester, $Verifier, signed_EAT, ~n),
         Eq(unpacked_nonce, ~n),
         Eq(check_signature, true),
-        Eq(unpacked_state, 'good_state')
+        Eq(unpacked_state, 'good')
       ]->
     [EatAuthenticityVerified($Attester, $Verifier, signed_EAT, ~n)]
     
@@ -108,8 +140,7 @@ restriction OnlyOneIdentity:
 
 
 
-// sanity check: the protocol gets to the end with only non-compormised parties
-// if the Attester never turn rouge (i.e. AttesterCompromise never happens), the protocol still runs to the end (i.e. we reach the event VerifierVerifiesEat
+// sanity check: the protocol gets to the end (i.e. we reach the event Verification_success)
 lemma sanity_check:
 "
 All Attester Verifier signed_EAT n #k .
@@ -120,64 +151,71 @@ All Attester Verifier signed_EAT n #k .
     (
         (Ex Verifier1 vltk #t #i .
            VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @t &
-            AttesterSendsEatGood(Attester, Verifier1, signed_EAT, n) @i &
+           AttesterSendsEatGood(Attester, Verifier1, signed_EAT, n) @i &
             #t < #k & 
             #i < #k) |
-            (Ex #j. AttesterCompromise(Attester) @j & #j < #k) 
+            (Ex #j. AttesterGetsPartiallyCompromise(Attester) @j & #j < #k) 
             
     )
 "
 
 //The verifier can't successfully verify an attester that is in a "bad state".
 //The verifier can't successfully verify an eat with a wrong nonce
+//with only non-compormised parties
+// if the Attester never turn rouge (i.e. AttesterCompromise never happens), the protocol still runs to the end (i.e. we reach the event Verification_success
 lemma cannot_Verify_A_Bad_EAT_or_Compromised_Attester:
 "
-All Attester Verifier signed_EAT n #k .
+All Attester Verifier signed_EAT n #k.
     (
         Verification_success(Attester, Verifier, signed_EAT, n) @k
     ) 
     ==> 
     (
-        (Ex Verifier1 vltk #t #i .
-            VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @t &
-            AttesterSendsEatGood(Attester, Verifier1, signed_EAT, n) @i &
+        ((Ex Verifier1 vltk #t #i.
+        VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @t &
+        AttesterSendsEatGood(Attester, Verifier1, signed_EAT, n) @i &
             #t < #k & 
-            #i < #k)     
+            #i < #k) & (not (Ex #j. AttesterGetsBadState(Attester) @j & #j < #k))
+        ) |
+        (Ex #j. AttesterGetsPartiallyCompromise(Attester) @j & #j < #k) 
+            
     )
 "
 
 
 //The Attester doesn't check the origin of the nonce
 lemma verify_nonce_not_send_by_Verifier:
+exists-trace
 "
-All Attester Verifier signed_EAT signed_nonce n #i #t .
+All Attester Verifier signed_EAT n #i #t .
     (
-        VerifierVerifiesEat(Attester, Verifier, signed_EAT, n) @i &
-        AttesterSendsEatGood(Attester, Verifier, signed_EAT, signed_nonce) @t &
+        // VerifierVerifiesEat(Attester, Verifier, signed_EAT, n) @i &
+        Verification_success(Attester, Verifier, signed_EAT, n) @i &
+        AttesterSendsEatGood(Attester, Verifier, signed_EAT, n) @t &
         #t < #i
     )
     ==> 
     not (
-        Ex #j .
-            VerifierSendsNonce(Attester, Verifier, signed_nonce) @j &
+        Ex vltk #j .
+            VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @j &
             #j < #t
     )
 "
 
 // add a lemma that shows that agreement doesn't hold from the attester's point of view
-lemma attester_does_not_agree_on_nonce_origin:
-exists-trace
-"
-All Attester Verifier signed_EAT signed_nonce #t .
-    (
-        AttesterSendsEatGood(Attester, Verifier, signed_EAT, signed_nonce) @t
-    )
-    ==> 
-        not (Ex #j .
-            VerifierSendsNonce(Attester, Verifier, signed_nonce) @j &
-            #j < #t
-    )
-"
+// lemma attester_does_not_agree_on_nonce_origin:
+// exists-trace
+// "
+// All Attester Verifier signed_EAT signed_nonce n vltk #t .
+//     (
+//         AttesterSendsEatGood(Attester, Verifier, signed_EAT, revealSign(n, vltk)) @t
+//     )
+//     ==> 
+//         not (Ex vltk #j .
+//             VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @j &
+//             #j < #t
+//     )
+// "
 
 
 
@@ -227,8 +265,10 @@ lemma adversary_learns_the_EAT_information:
      (
         Verification_success(Attester, Verifier, signed_EAT, n) @i
      )
-     ==> (Ex verifier1 EAT Altk #j . 
-        AttesterSendsEatGood(Attester, verifier1, revealSign(EAT, Altk), n) @j) &
+     ==> (
+            (Ex verifier1 EAT Altk #j . AttesterSendsEatGood(Attester, verifier1, revealSign(EAT, Altk), n) @j) | 
+            (Ex verifier1 EAT Altk #j . AttesterSendsEatPartialCompromise(Attester, verifier1, revealSign(EAT, Altk), n) @j)
+         ) &
         ((Ex EAT #k . K(EAT) @k) & (Ex n #k1 . K(n) @k1))
  "
 
