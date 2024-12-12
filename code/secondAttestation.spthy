@@ -2,6 +2,8 @@ theory SecondEATImplementation
 begin
 builtins: asymmetric-encryption, revealing-signing
 
+// This version of the protocol has problems to weak agreement and non-injection, in that the attester doesn't verify the nonce. And there isn't a one to one relation
+
 rule create_identities:
     [Fr(~ltk)] //generate new fresh private key
     -->
