@@ -72,7 +72,7 @@ rule Attester_create_and_sends_EAT_bad:
         attester_data = 'bad' // check that you're in a bad state and send bad_firmware
         EAT = <signed_nonce, attester_data>
         signed_EAT = revealSign(EAT, ~Altk)
-        // there's no explicit test for the authenticity and integrity of signed_nonce
+        // there's no explicit check for the authenticity and integrity of signed_nonce
     in
     [ 
         !Identity($Attester, ~Altk, pk(~Altk)),
@@ -140,7 +140,8 @@ restriction OnlyOneIdentity:
 
 
 
-// sanity check: the protocol gets to the end (i.e. we reach the event Verification_success)
+// sanity check: the protocol gets to the end (i.e. we reach the event Verification_success) 
+//even if the AttesterGetsPartiallyCompromise event happens
 lemma sanity_check:
 "
 All Attester Verifier signed_EAT n #k .
@@ -161,8 +162,6 @@ All Attester Verifier signed_EAT n #k .
 
 //The verifier can't successfully verify an attester that is in a "bad state".
 //The verifier can't successfully verify an eat with a wrong nonce
-//with only non-compormised parties
-// if the Attester never turn rouge (i.e. AttesterCompromise never happens), the protocol still runs to the end (i.e. we reach the event Verification_success
 lemma cannot_Verify_A_Bad_EAT_or_Compromised_Attester:
 "
 All Attester Verifier signed_EAT n #k .
@@ -182,41 +181,6 @@ All Attester Verifier signed_EAT n #k .
         (Ex #j. AttesterGetsPartiallyCompromise(Attester) @j & #j < #k) 
     )
 " 
-
-
-//The Attester doesn't check the origin of the nonce
-lemma verify_nonce_not_send_by_Verifier:
-exists-trace
-"
-All Attester Verifier signed_EAT n #i #t .
-    (
-        // VerifierVerifiesEat(Attester, Verifier, signed_EAT, n) @i &
-        Verification_success(Attester, Verifier, signed_EAT, n) @i &
-        AttesterSendsEatGood(Attester, Verifier, signed_EAT, n) @t &
-        #t < #i
-    )
-    ==> 
-    not (
-        Ex vltk #j .
-            VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @j &
-            #j < #t
-    )
-"
-
-// add a lemma that shows that agreement doesn't hold from the attester's point of view
-// lemma attester_does_not_agree_on_nonce_origin:
-// exists-trace
-// "
-// All Attester Verifier signed_EAT signed_nonce n vltk #t .
-//     (
-//         AttesterSendsEatGood(Attester, Verifier, signed_EAT, revealSign(n, vltk)) @t
-//     )
-//     ==> 
-//         not (Ex vltk #j .
-//             VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @j &
-//             #j < #t
-//     )
-// "
 
 
 
@@ -253,11 +217,28 @@ lemma nonce_freshness_across_sessions:
  "
  All Attester Verifier n #i #j .
      (
-         VerifierSendsNonce(Attester, Verifier, n) @i &
-         VerifierSendsNonce(Attester, Verifier, n) @j
+        VerifierSendsNonce(Attester, Verifier, n) @i &
+        VerifierSendsNonce(Attester, Verifier, n) @j
      )
      ==> #i = #j
  "
+
+
+// add a lemma that shows that agreement doesn't hold from the attester's point of view
+lemma attester_does_not_agree_on_nonce_origin:
+exists-trace
+"
+All Attester Verifier signed_EAT n #t .
+    (
+        AttesterSendsEatGood(Attester, Verifier, signed_EAT, n) @t
+    )
+    ==> 
+        not (Ex vltk #j .
+            VerifierSendsNonce(Attester, Verifier, revealSign(n, vltk)) @j &
+            #j < #t
+    )
+"
+
 
 //Lemma shows that an adversary learns the values in the EAT
 lemma adversary_learns_the_EAT_information:
