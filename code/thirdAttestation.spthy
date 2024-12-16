@@ -8,8 +8,8 @@ builtins: revealing-signing
 
 //The attester state represents the actual state that the attester is in.
 //In the model the Attester state can be in three different states:
-// * good
-// * bad - either compromised and the TPM notices or just has bad values like old software update
+// * good_state
+// * bad_state - either compromised and the TPM notices or just has bad values like old software update
 // * partialCompromise - an adversary is able to trick the TPM to sign of bad attester data as if it was good attester data.
 
 
@@ -19,7 +19,7 @@ builtins: revealing-signing
 
 rule create_identities:
     [Fr(~ltk)]
-    --[Create_ident($A, ~ltk)]->
+    --[CreateIdent($A, ~ltk)]->
     [!Identity($A, ~ltk, pk(~ltk)), Out(pk(~ltk)), AttesterState($A, 'good_state')]  
 
 
@@ -39,7 +39,7 @@ rule Attester_Gets_In_Bad_State:
     [AttesterState($Attester, 'bad_state')]
 
 // Rule for an attester to get partially compromised -> meaning that an adversary compromises the attester and is able to make the TPM sign of information as if it was in a good state.
-rule Attester_Gets_Partially_Comrpomised:
+rule Attester_Gets_Partially_Compromised:
     [AttesterState($Attester, 'good_state')]
     --[AttesterGetsPartiallyCompromise($Attester)]->
     [AttesterState($Attester, 'partially_Compromised')]
@@ -118,9 +118,9 @@ rule Verifier_receive_and_verify_EAT:
     
 
 
-rule verificationSuccess:
+rule verification_Success:
     [EatAuthenticityVerified($Attester, $Verifier, signed_EAT, ~n)]
-    --[Verification_success($Attester, $Verifier, signed_EAT, ~n)]->
+    --[VerificationSuccess($Attester, $Verifier, signed_EAT, ~n)]->
     []
 
 
@@ -129,7 +129,7 @@ restriction Equality:
 
 
 restriction OnlyOneIdentity:
-    "All A ltk1 ltk2 #i #j. Create_ident(A,ltk1) @i & Create_ident(A,ltk2) @j ==> ltk1=ltk2"
+    "All A ltk1 ltk2 #i #j. CreateIdent(A,ltk1) @i & CreateIdent(A,ltk2) @j ==> ltk1=ltk2"
 
 
 
@@ -146,7 +146,7 @@ lemma sanity_check:
 "
 All Attester Verifier signed_EAT n #k .
     (
-        Verification_success(Attester, Verifier, signed_EAT, n) @k
+        VerificationSuccess(Attester, Verifier, signed_EAT, n) @k
     ) 
     ==> 
     (
@@ -166,7 +166,7 @@ lemma cannot_Verify_A_Bad_EAT_or_Compromised_Attester:
 "
 All Attester Verifier signed_EAT n #k .
     (
-        Verification_success(Attester, Verifier, signed_EAT, n) @k
+        VerificationSuccess(Attester, Verifier, signed_EAT, n) @k
     ) 
     ==> 
     (
@@ -189,7 +189,7 @@ lemma attester_private_key_compromised:
  "
  All Attester Verifier signed_EAT ltk n #i #k .
     ( 
-        Create_ident(Attester, ltk) @k &
+        CreateIdent(Attester, ltk) @k &
         VerifierVerifiesEat(Attester, Verifier, signed_EAT, n) @i 
     )
     ==> not(Ex #j .
@@ -198,12 +198,12 @@ lemma attester_private_key_compromised:
  "
 
  //K never learns the verifiers long term key
- lemma verifier_private_key_compromised:
+lemma verifier_private_key_compromised:
  "
  All Attester Verifier signed_EAT Altk Vltk n #c1 #c2 #i .
     ( 
-        Create_ident(Attester, Altk) @c1 &
-        Create_ident(Verifier, Vltk) @c2 &
+        CreateIdent(Attester, Altk) @c1 &
+        CreateIdent(Verifier, Vltk) @c2 &
         VerifierVerifiesEat(Attester, Verifier, signed_EAT, n) @i 
     )
     ==> not(Ex #j .
@@ -245,7 +245,7 @@ lemma adversary_learns_the_EAT_information:
  "
  All Attester Verifier signed_EAT n #i . 
      (
-        Verification_success(Attester, Verifier, signed_EAT, n) @i
+        VerificationSuccess(Attester, Verifier, signed_EAT, n) @i
      )
      ==> (
             (Ex verifier1 EAT Altk #j . AttesterSendsEatGood(Attester, verifier1, revealSign(EAT, Altk), n) @j) | 
